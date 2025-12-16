@@ -1,0 +1,215 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Antares Vision Group Brand Colors - Business Area Palette */
+  --background: 0 0% 100%;
+  --foreground: 210 20% 15%;
+  --card: 0 0% 100%;
+  --card-foreground: 210 20% 15%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 210 20% 15%;
+  
+  /* Primary: Life Science #003865 (RGB: 7, 51, 96) */
+  --primary: 210 100% 20%;
+  --primary-foreground: 0 0% 100%;
+  
+  /* Secondary colors */
+  --secondary: 210 15% 96%;
+  --secondary-foreground: 210 20% 15%;
+  --muted: 210 15% 96%;
+  --muted-foreground: 210 8% 46%;
+  --accent: 210 100% 97%;
+  --accent-foreground: 210 100% 20%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 210 13% 90%;
+  --input: 210 13% 90%;
+  --ring: 210 100% 20%;
+  --radius: 0.5rem;
+  
+  /* Brand Business Area Colors */
+  /* Life Science: #003865 (RGB: 7, 51, 96) - Primary */
+  --color-life-science: 210 100% 20%;
+  /* Chemicals: #007672 (RGB: 0, 117, 121) */
+  --color-chemicals: 178 100% 24%;
+  /* Cosmetics: #DD878D (RGB: 221, 135, 141) */
+  --color-cosmetics: 355 55% 70%;
+  /* Beverage: #D45D00 (RGB: 211, 102, 1) */
+  --color-beverage: 25 99% 42%;
+  /* Food: #EAAA00 (RGB: 240, 170, 0) */
+  --color-food: 43 100% 47%;
+  
+  /* Brand gradient colors */
+  --gradient-start: 210 100% 20%;
+  --gradient-end: 178 100% 24%;
+  --gradient-light: 210 100% 98%;
+  
+  /* Nytro Marketing Brand Colors */
+  --nytro-orange: 30 85% 51%;      /* #F39313 - Bright, energetic orange */
+  --nytro-red: 355 95% 46%;        /* #E30613 - Vibrant red */
+  --nytro-blue: 210 58% 42%;        /* #2D69A7 - Professional blue */
+  --nytro-teal: 177 100% 30%;      /* #009A93 - Modern teal/turquoise */
+}
+
+.dark {
+  --background: 210 20% 8%;
+  --foreground: 0 0% 98%;
+  --card: 210 20% 10%;
+  --card-foreground: 0 0% 98%;
+  --popover: 210 20% 10%;
+  --popover-foreground: 0 0% 98%;
+  --primary: 210 100% 35%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 210 15% 20%;
+  --secondary-foreground: 0 0% 98%;
+  --muted: 210 15% 20%;
+  --muted-foreground: 210 8% 65%;
+  --accent: 210 100% 20%;
+  --accent-foreground: 210 100% 80%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 210 15% 20%;
+  --input: 210 15% 20%;
+  --ring: 210 100% 35%;
+  --gradient-start: 210 100% 35%;
+  --gradient-end: 178 100% 30%;
+  --gradient-light: 210 20% 15%;
+  
+  /* Brand Business Area Colors - Dark Mode */
+  --color-life-science: 210 100% 35%;
+  --color-chemicals: 178 100% 30%;
+  --color-cosmetics: 355 55% 65%;
+  --color-beverage: 25 99% 50%;
+  --color-food: 43 100% 55%;
+  
+  /* Nytro Marketing Brand Colors - Dark Mode */
+  --nytro-orange: 30 85% 60%;
+  --nytro-red: 355 95% 55%;
+  --nytro-blue: 210 58% 55%;
+  --nytro-teal: 177 100% 45%;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-feature-settings: "rlig" 1, "calt" 1;
+  font-family: var(--font-roboto), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* Typography - Exo for headings, Roboto for body */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-exo), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* Antares Vision Group Brand Styling */
+.antares-gradient {
+  background: linear-gradient(135deg, hsl(var(--gradient-start)) 0%, hsl(var(--gradient-end)) 100%);
+}
+
+/* Nytro Marketing Brand Styling */
+.nytro-gradient {
+  background: linear-gradient(135deg, hsl(var(--nytro-blue)) 0%, hsl(var(--nytro-teal)) 50%, hsl(var(--nytro-orange)) 100%);
+}
+
+.nytro-gradient-vibrant {
+  background: linear-gradient(135deg, hsl(var(--nytro-orange)) 0%, hsl(var(--nytro-red)) 100%);
+}
+
+.nytro-gradient-cool {
+  background: linear-gradient(135deg, hsl(var(--nytro-blue)) 0%, hsl(var(--nytro-teal)) 100%);
+}
+
+.antares-section {
+  background: linear-gradient(to bottom, hsl(var(--gradient-light)) 0%, hsl(var(--background)) 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.antares-section::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: 
+    radial-gradient(circle at 20% 50%, hsl(var(--primary) / 0.03) 0%, transparent 50%),
+    radial-gradient(circle at 80% 50%, hsl(var(--primary) / 0.03) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+/* Circle texture pattern - brand element */
+.circle-pattern {
+  background-image: 
+    radial-gradient(circle at 1px 1px, hsl(var(--primary) / 0.05) 1px, transparent 0);
+  background-size: 20px 20px;
+}
+
+/* Brand pattern overlay */
+.brand-pattern {
+  position: relative;
+}
+
+.brand-pattern::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: 
+    linear-gradient(45deg, transparent 30%, hsl(var(--primary) / 0.02) 50%, transparent 70%),
+    linear-gradient(-45deg, transparent 30%, hsl(var(--primary) / 0.02) 50%, transparent 70%);
+  background-size: 40px 40px;
+  pointer-events: none !important;
+  opacity: 0.5;
+  z-index: 0;
+}
+
+/* Ensure interactive elements are above overlays */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+input[type="button"]:not(:disabled),
+input[type="submit"]:not(:disabled),
+a:not([aria-disabled="true"]) {
+  position: relative;
+  z-index: 10;
+  pointer-events: auto !important;
+}
+
+/* Ensure cards and containers don't block interactions */
+[class*="card"],
+[class*="Card"] {
+  pointer-events: auto;
+}
+
+/* Ensure main content area is interactive */
+main {
+  position: relative;
+  z-index: 1;
+}
+
+/* Responsive text scaling */
+@media (max-width: 640px) {
+  h1 {
+    font-size: 2rem;
+  }
+  h2 {
+    font-size: 1.5rem;
+  }
+}
+
+/* Smooth transitions */
+* {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
