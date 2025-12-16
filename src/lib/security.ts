@@ -14,7 +14,7 @@ export function sanitizeError(error: any): string {
   // Remove any potential API keys (long strings that might be keys)
   errorMessage = errorMessage.replace(/sk-[a-zA-Z0-9_-]{20,}/g, '[API_KEY_REDACTED]')
   errorMessage = errorMessage.replace(/SG\.[a-zA-Z0-9_-]{50,}/g, '[API_KEY_REDACTED]')
-  errorMessage = errorMessage.replace(/[a-zA-Z0-9_-]{40,}/g, (match) => {
+  errorMessage = errorMessage.replace(/[a-zA-Z0-9_-]{40,}/g, (match: string) => {
     // If it looks like a token/key, redact it
     if (match.length > 40 && /^[a-zA-Z0-9_-]+$/.test(match)) {
       return '[TOKEN_REDACTED]'
