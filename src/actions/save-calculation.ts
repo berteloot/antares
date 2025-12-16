@@ -2,6 +2,7 @@
 
 import { calculateROI } from '@/lib/calculations'
 import { CalculationInputs } from '@/lib/types'
+import { sanitizeError, safeLogError } from '@/lib/security'
 import OpenAI from 'openai'
 import sgMail from '@sendgrid/mail'
 
@@ -40,7 +41,7 @@ export async function saveCalculation(
       await saveToHubSpot(email, company, inputs, results)
     } catch (hubspotError: any) {
       // Log but don't fail the entire operation if HubSpot fails
-      console.warn('HubSpot save failed (continuing anyway):', hubspotError?.message || hubspotError)
+      safeLogError('saveCalculation-HubSpot', hubspotError)
     }
 
     // Generate business case with OpenAI (non-blocking if OpenAI is not configured)
@@ -51,18 +52,18 @@ export async function saveCalculation(
 
     return { success: true }
   } catch (error: any) {
-    console.error('Error saving calculation:', error)
+    // Use safe logging to prevent API key exposure
+    safeLogError('saveCalculation', error)
     
-    // Provide more specific error messages
+    // Provide sanitized error messages (never expose API keys or sensitive data)
     let errorMessage = 'Failed to send report. Please try again.'
     
     if (error?.response?.body?.errors) {
-      // SendGrid specific errors
+      // SendGrid specific errors - sanitize to prevent key leakage
       const sendGridError = error.response.body.errors[0]
-      errorMessage = `Email error: ${sendGridError.message}`
-      console.error('SendGrid error details:', sendGridError)
+      errorMessage = `Email error: ${sanitizeError(sendGridError.message || sendGridError)}`
     } else if (error?.message) {
-      errorMessage = `Error: ${error.message}`
+      errorMessage = `Error: ${sanitizeError(error.message)}`
     }
     
     return { success: false, error: errorMessage }
@@ -97,7 +98,7 @@ Make it persuasive and highlight the business benefits. Keep it under 300 words.
 
     return completion.choices[0].message.content || 'Business case generated successfully.'
   } catch (error) {
-    console.error('Error generating business case:', error)
+    safeLogError('generateBusinessCase', error)
     return 'Unable to generate business case at this time.'
   }
 }
@@ -261,9 +262,8 @@ async function findContactByEmail(apiKey: string, email: string): Promise<string
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
-      console.error('Error searching for contact in HubSpot:', {
+      safeLogError('findContactByEmail', {
         message: 'Search failed',
-        response: errorData,
         status: response.status,
         statusText: response.statusText,
       })
@@ -276,10 +276,7 @@ async function findContactByEmail(apiKey: string, email: string): Promise<string
     }
     return null
   } catch (error: any) {
-    console.error('Error searching for contact in HubSpot:', {
-      message: error.message,
-      error: error
-    })
+    safeLogError('findContactByEmail', error)
     return null
   }
 }
@@ -314,9 +311,8 @@ async function createContact(apiKey: string, email: string, company?: string): P
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
-      console.error('Error creating contact in HubSpot:', {
+      safeLogError('createContact', {
         message: 'Create failed',
-        response: errorData,
         status: response.status,
         statusText: response.statusText,
       })
@@ -326,10 +322,7 @@ async function createContact(apiKey: string, email: string, company?: string): P
     const data = await response.json()
     return data.id || null
   } catch (error: any) {
-    console.error('Error creating contact in HubSpot:', {
-      message: error.message,
-      error: error
-    })
+    safeLogError('createContact', error)
     return null
   }
 }
@@ -429,10 +422,7 @@ async function createNoteForContact(
 
     return noteResponse.status === 201 || noteResponse.status === 200
   } catch (error: any) {
-    console.error('Error creating note in HubSpot:', {
-      message: error.message,
-      error: error
-    })
+    safeLogError('createNoteForContact', error)
     return false
   }
 }
@@ -446,20 +436,16 @@ async function saveToHubSpot(
   const apiKey = process.env.HUBSPOT_ACCESS_TOKEN
 
   if (!apiKey) {
-    console.warn('HUBSPOT_ACCESS_TOKEN is not configured, skipping HubSpot save')
+    // No API key - silently skip (this is expected if not configured)
     return
   }
 
   try {
-    console.log('Starting HubSpot integration for:', email)
-
     // Get or create contact
     const contactId = await getOrCreateContact(apiKey, email, company)
     if (!contactId) {
       throw new Error('Failed to create or find contact in HubSpot')
     }
-
-    console.log('Contact ID:', contactId)
 
     // Format note content
     const noteContent = `Antares ROI
@@ -488,12 +474,9 @@ Results:
       throw new Error('Failed to create note in HubSpot')
     }
 
-    console.log('Successfully saved calculation to HubSpot')
+    // Success - no sensitive data logged
   } catch (error: any) {
-    console.error('Error saving to HubSpot:', {
-      message: error?.message,
-      error: error
-    })
+    safeLogError('saveToHubSpot', error)
     // Re-throw to allow caller to handle, but don't block email sending
     throw error
   }
