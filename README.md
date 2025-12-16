@@ -74,62 +74,66 @@ The `Calculation` model stores:
    git push -u origin main
    ```
 
-### Render Deployment
+### Render Deployment (Manual Setup)
 
 This application is configured for deployment on Render with:
 - Automatic Prisma client generation via `postinstall` script
 - Singleton database connection pattern (critical for Render)
 - Server-side rendering and API routes
-- `render.yaml` configuration file for easy setup
 
 #### Steps to Deploy on Render:
 
 1. **Create a Render account** at [render.com](https://render.com)
 
-2. **Connect your GitHub repository:**
+2. **Create a PostgreSQL Database (Optional - only if you need a new database):**
    - Go to your Render dashboard
-   - Click "New" → "Blueprint"
-   - Connect your GitHub account and select the `antares` repository
-   - Render will automatically detect the `render.yaml` file
+   - Click "New" → "PostgreSQL"
+   - Choose a name (e.g., `antares-db`)
+   - Select a plan (Free tier available for development)
+   - Click "Create Database"
+   - **Copy the Internal Database URL** - you'll need this for the web service
+   - **Note:** If you already have a database, skip this step and use your existing database URL
 
-3. **Or manually create services:**
-   - **PostgreSQL Database:**
-     - Create a new PostgreSQL database
-     - Name it `antares-db`
-     - Note the connection string
-   
-   - **Web Service:**
-     - Create a new Web Service
-     - Connect to your GitHub repository
-     - Use these settings:
-       - **Build Command:** `npm install && npm run db:generate && npm run build`
-       - **Start Command:** `npm start`
-       - **Environment:** Node
-       - **Plan:** Starter (or higher)
+3. **Create a Web Service:**
+   - Go to your Render dashboard
+   - Click "New" → "Web Service"
+   - Connect your GitHub account and select the `antares` repository
+   - Configure the service:
+     - **Name:** `antares` (or your preferred name)
+     - **Environment:** `Node`
+     - **Region:** Choose closest to your users
+     - **Branch:** `master` (or your default branch)
+     - **Root Directory:** (leave empty, or `./` if needed)
+     - **Build Command:** `npm install && npm run db:generate && npm run build`
+     - **Start Command:** `npm start`
+     - **Plan:** Free (or upgrade as needed)
 
 4. **Configure Environment Variables:**
-   In your Render Web Service, add these environment variables:
+   In your Render Web Service settings, go to "Environment" and add:
    - `NODE_ENV`: `production`
-   - `DATABASE_URL`: (automatically set if using `render.yaml`, otherwise use the connection string from your database)
+   - `DATABASE_URL`: Your PostgreSQL connection string (from step 2, or your existing database)
    - `OPENAI_API_KEY`: Your OpenAI API key
    - `SENDGRID_API_KEY`: Your SendGrid API key
-   - `FROM_EMAIL`: Your verified sender email (e.g., `noreply@yourdomain.com`)
+   - `FROM_EMAIL`: Your verified sender email (e.g., `sberteloot@nytromarketing.com`)
 
 5. **Deploy:**
-   - Render will automatically deploy on every push to the main branch
-   - On first deploy, you may need to run database migrations:
-     - Go to your Web Service → Shell
+   - Click "Create Web Service"
+   - Render will automatically deploy on every push to your branch
+   - On first deploy, after the service is running, you need to set up the database schema:
+     - Go to your Web Service → "Shell" tab
      - Run: `npx prisma db push`
+     - This will create the `Calculation` table in your database
 
 6. **Verify Deployment:**
-   - Check the logs in Render dashboard
-   - Visit your deployed URL
-   - Run the validation script: `npm run validate-env` (in Render Shell)
+   - Check the build and runtime logs in Render dashboard
+   - Visit your deployed URL (shown in the service dashboard)
+   - Optionally, run the validation script in the Shell: `npm run validate-env`
 
 #### Important Notes:
 
 - The `FROM_EMAIL` must be a verified sender in your SendGrid account
-- The database will be automatically provisioned if using `render.yaml`
+- You can use an existing PostgreSQL database - just provide its connection string
 - Prisma client is automatically generated on each deploy via the `postinstall` script
 - Make sure your SendGrid sender is verified before sending emails
+- The database schema is pushed manually on first deploy (step 5)
 
