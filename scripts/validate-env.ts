@@ -6,7 +6,6 @@
 // Load environment variables from .env file
 import 'dotenv/config'
 
-import { PrismaClient } from '@prisma/client'
 import OpenAI from 'openai'
 import sgMail from '@sendgrid/mail'
 
@@ -26,16 +25,6 @@ function logResult(name: string, status: 'pass' | 'fail', message: string) {
 
 async function validateEnvironmentVariables() {
   console.log('\n🔍 Validating Environment Variables...\n')
-
-  // Check DATABASE_URL
-  if (!process.env.DATABASE_URL) {
-    logResult('DATABASE_URL', 'fail', 'Environment variable is not set')
-  } else if (process.env.DATABASE_URL.includes('username:password') || 
-             process.env.DATABASE_URL.includes('your-')) {
-    logResult('DATABASE_URL', 'fail', 'Still contains placeholder value')
-  } else {
-    logResult('DATABASE_URL', 'pass', 'Environment variable is set')
-  }
 
   // Check OPENAI_API_KEY
   if (!process.env.OPENAI_API_KEY) {
@@ -57,34 +46,6 @@ async function validateEnvironmentVariables() {
     logResult('SENDGRID_API_KEY', 'fail', 'API key appears to be too short (should be ~70+ characters)')
   } else {
     logResult('SENDGRID_API_KEY', 'pass', 'Environment variable is set')
-  }
-}
-
-async function validateDatabaseConnection() {
-  console.log('\n🗄️  Testing Database Connection...\n')
-
-  try {
-    const prisma = new PrismaClient()
-    
-    // Test connection with a simple query
-    await prisma.$connect()
-    logResult('Database Connection', 'pass', 'Successfully connected to database')
-    
-    // Test if we can query the Calculation table
-    try {
-      await prisma.calculation.findMany({ take: 1 })
-      logResult('Database Query', 'pass', 'Successfully queried Calculation table')
-    } catch (error: any) {
-      if (error.message?.includes('does not exist')) {
-        logResult('Database Query', 'fail', 'Calculation table does not exist. Run: npm run db:push')
-      } else {
-        logResult('Database Query', 'fail', `Query failed: ${error.message}`)
-      }
-    }
-    
-    await prisma.$disconnect()
-  } catch (error: any) {
-    logResult('Database Connection', 'fail', `Connection failed: ${error.message}`)
   }
 }
 
@@ -157,7 +118,6 @@ async function main() {
   console.log('='.repeat(60))
 
   await validateEnvironmentVariables()
-  await validateDatabaseConnection()
   await validateOpenAIConnection()
   await validateSendGridConnection()
 
