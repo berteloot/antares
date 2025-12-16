@@ -11,15 +11,15 @@ import sgMail from '@sendgrid/mail'
 
 interface ValidationResult {
   name: string
-  status: 'pass' | 'fail'
+  status: 'pass' | 'fail' | 'skip'
   message: string
 }
 
 const results: ValidationResult[] = []
 
-function logResult(name: string, status: 'pass' | 'fail', message: string) {
+function logResult(name: string, status: 'pass' | 'fail' | 'skip', message: string) {
   results.push({ name, status, message })
-  const icon = status === 'pass' ? '✅' : '❌'
+  const icon = status === 'pass' ? '✅' : status === 'skip' ? '⏭️' : '❌'
   console.log(`${icon} ${name}: ${message}`)
 }
 
