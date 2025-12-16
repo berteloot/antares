@@ -369,10 +369,8 @@ async function createNoteForContact(
     )
 
     if (!noteResponse.ok) {
-      const errorData = await noteResponse.json().catch(() => ({}))
-      console.error('Error creating note in HubSpot:', {
+      safeLogError('createNoteForContact', {
         message: 'Note creation failed',
-        response: errorData,
         status: noteResponse.status,
         statusText: noteResponse.statusText,
       })
@@ -382,7 +380,7 @@ async function createNoteForContact(
     const noteData = await noteResponse.json()
     const noteId = noteData.id
     if (!noteId) {
-      console.error('Note created but no ID returned:', noteData)
+      safeLogError('createNoteForContact', new Error('Note created but no ID returned'))
       return false
     }
 
@@ -403,20 +401,15 @@ async function createNoteForContact(
 
       if (!assocResponse.ok) {
         // If association fails, log but don't fail completely - the note was created
-        const errorData = await assocResponse.json().catch(() => ({}))
-        console.warn('Failed to associate note with contact, but note was created:', {
+        safeLogError('createNoteForContact-association', {
           message: 'Association failed',
-          response: errorData,
           status: assocResponse.status,
         })
         // Note: The note was still created, so we return true
       }
     } catch (assocError: any) {
       // If association fails, log but don't fail completely - the note was created
-      console.warn('Failed to associate note with contact, but note was created:', {
-        message: assocError.message,
-        error: assocError
-      })
+      safeLogError('createNoteForContact-association', assocError)
       // Note: The note was still created, so we return true
     }
 
