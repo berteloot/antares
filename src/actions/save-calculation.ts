@@ -1,8 +1,9 @@
 'use server'
 
-import { calculateROI } from '@/lib/calculations'
-import { CalculationInputs } from '@/lib/types'
+import { calculateROI, calculateVisibilitySavingsSimple } from '@/lib/calculations'
+import { CalculationInputs, VisibilitySimpleInputs } from '@/lib/types'
 import { sanitizeError, safeLogError } from '@/lib/security'
+import { formatMoney, formatInt } from '@/lib/format'
 import OpenAI from 'openai'
 import sgMail from '@sendgrid/mail'
 
@@ -16,12 +17,15 @@ if (process.env.SENDGRID_API_KEY) {
   sgMail.setApiKey(process.env.SENDGRID_API_KEY)
 }
 
-export async function saveCalculation(
-  inputs: CalculationInputs,
-  email: string,
+export async function saveCalculation(payload: {
+  email: string
   company: string
-) {
+  simpleInputs?: VisibilitySimpleInputs
+  inputs?: CalculationInputs
+}) {
   try {
+    const { email, company, simpleInputs, inputs } = payload
+
     // Validate required environment variables
     if (!process.env.SENDGRID_API_KEY) {
       console.error('SENDGRID_API_KEY is not configured')
@@ -33,33 +37,51 @@ export async function saveCalculation(
       return { success: false, error: 'Email sender is not configured. Please contact support.' }
     }
 
-    // Calculate results
-    const results = calculateROI(inputs)
+    // Use simple calculator if provided, otherwise fall back to advanced
+    if (simpleInputs) {
+      const results = calculateVisibilitySavingsSimple(simpleInputs)
+      
+      // Save to HubSpot (non-blocking)
+      try {
+        await saveToHubSpotSimple(email, company, simpleInputs, results)
+      } catch (hubspotError: any) {
+        safeLogError('saveCalculation-HubSpot', hubspotError)
+      }
 
-    // Save to HubSpot (non-blocking - don't fail if HubSpot is not configured)
-    try {
-      await saveToHubSpot(email, company, inputs, results)
-    } catch (hubspotError: any) {
-      // Log but don't fail the entire operation if HubSpot fails
-      safeLogError('saveCalculation-HubSpot', hubspotError)
+      // Generate business case
+      const businessCase = await generateBusinessCaseSimple(company, simpleInputs, results)
+
+      // Send email
+      await sendReportEmailSimple(email, company, results, businessCase)
+
+      return { success: true }
+    } else if (inputs) {
+      // Legacy advanced model
+      const results = calculateROI(inputs)
+
+      // Save to HubSpot (non-blocking)
+      try {
+        await saveToHubSpot(email, company, inputs, results)
+      } catch (hubspotError: any) {
+        safeLogError('saveCalculation-HubSpot', hubspotError)
+      }
+
+      // Generate business case
+      const businessCase = await generateBusinessCase(results)
+
+      // Send email
+      await sendReportEmail(email, company, results, businessCase)
+
+      return { success: true }
+    } else {
+      return { success: false, error: 'No calculation inputs provided' }
     }
-
-    // Generate business case with OpenAI (non-blocking if OpenAI is not configured)
-    const businessCase = await generateBusinessCase(results)
-
-    // Send email with SendGrid
-    await sendReportEmail(email, company, results, businessCase)
-
-    return { success: true }
   } catch (error: any) {
-    // Use safe logging to prevent API key exposure
     safeLogError('saveCalculation', error)
     
-    // Provide sanitized error messages (never expose API keys or sensitive data)
     let errorMessage = 'Failed to send report. Please try again.'
     
     if (error?.response?.body?.errors) {
-      // SendGrid specific errors - sanitize to prevent key leakage
       const sendGridError = error.response.body.errors[0]
       errorMessage = `Email error: ${sanitizeError(sendGridError.message || sendGridError)}`
     } else if (error?.message) {
@@ -67,6 +89,48 @@ export async function saveCalculation(
     }
     
     return { success: false, error: errorMessage }
+  }
+}
+
+async function generateBusinessCaseSimple(
+  company: string,
+  inputs: VisibilitySimpleInputs,
+  results: any
+): Promise<string> {
+  if (!openai) return 'Business case generation is not available at this time.'
+
+  const prompt = `Write a concise executive summary about returnable asset visibility savings for ${company}.
+Use these inputs:
+- Containers lost per month: ${inputs.lostContainersPerMonth}
+- Replacement cost: $${inputs.replacementCost}
+- Assets not moving 10+ days: ${inputs.nonMovingAssets10Plus}
+- Cycle counts per month: ${inputs.cycleCountsPerMonth}
+- Hours per cycle count: ${inputs.hoursPerCycleCount}
+- Associates doing cycle counts: ${inputs.cycleCountAssociates}
+- Hours spent searching per month: ${inputs.hoursSearchingPerMonth}
+- Material handling associates: ${inputs.materialHandlingAssociates}
+- Hourly rate: $${inputs.hourlyRate}
+
+Computed savings:
+- Lost container savings: ${formatMoney(results.lostContainerSavingsYearly)} per year
+- Time savings value: ${formatMoney(results.timeSavingsYearly)} per year
+- Non-moving container cost: ${formatMoney(results.nonMovingCostYearly)} per year
+- Manpower efficiency gains: ${formatMoney(results.manpowerEfficiencyYearly)} per year
+- Overall savings: ${formatMoney(results.overallYearlySavings)} per year
+
+Explain what these represent and why improved visibility reduces loss, idle assets, and manual work. Keep it under 250 words.`
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.4,
+    })
+
+    return completion.choices?.[0]?.message?.content ?? 'Business case generated successfully.'
+  } catch (error) {
+    safeLogError('generateBusinessCaseSimple', error)
+    return 'Unable to generate business case at this time.'
   }
 }
 
@@ -82,13 +146,27 @@ async function generateBusinessCase(results: any): Promise<string> {
       ? 'No payback (investment never recovers)' 
       : `${results.paybackPeriodYears.toFixed(1)} years`
     
-    const prompt = `Generate a compelling executive summary for a returnable packaging ROI analysis. Key metrics:
-- Payback Period: ${paybackText}
-- Annual Savings: $${results.grossAnnualSavings.toLocaleString()}
-- Required Fleet Size: ${Math.ceil(results.requiredFleetSize)} units
-- Total Investment: $${results.totalInvestment.toLocaleString()}
+    const prompt = `Generate a compelling executive summary for a returnable asset visibility ROI analysis comparing baseline (today) vs. with visibility (future state). Key metrics:
 
-Make it persuasive and highlight the business benefits. Keep it under 300 words.`
+Baseline (Today) Annual Loss: $${results.baselineTotalLoss.toLocaleString()}
+- Shrink Cost: $${results.annualShrinkCost.toLocaleString()}
+- Dwell Time Cost (working capital): $${results.dwellCostToday.toLocaleString()}
+- Excess Fleet Cost: $${results.excessInventoryCost.toLocaleString()}
+- Manual Process Cost: $${results.annualManualProcessCost.toLocaleString()}
+
+With Visibility (Future) Annual Loss: $${results.futureTotalLoss.toLocaleString()}
+- Shrink Cost: $${results.annualShrinkCostAfter.toLocaleString()}
+- Dwell Time Cost (working capital): $${results.dwellCostAfter.toLocaleString()}
+- Excess Fleet Cost: $${results.excessInventoryCostAfter.toLocaleString()}
+- Manual Process Cost: $${results.annualManualProcessCostAfter.toLocaleString()}
+
+Savings:
+- Annual Savings: $${results.annualSavings.toLocaleString()}
+- Net Annual Savings: $${results.netAnnualSavings.toLocaleString()}
+- Payback Period: ${paybackText}
+- 3-Year ROI: ${results.threeYearROI.toFixed(0)}%
+
+Focus on the financial impact of improved visibility and tracking, emphasizing how visibility reduces shrink, improves cycle time (reducing dwell time working capital), optimizes fleet size, and automates manual processes. Make it persuasive and highlight the business benefits. Keep it under 300 words.`
 
     const completion = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
@@ -148,7 +226,7 @@ async function sendReportEmail(
               <h2 style="margin: 0; color: #333333; font-size: 22px; font-weight: 600; text-align: center; border-bottom: 2px solid #667eea; padding-bottom: 15px;">
                 ${company}
               </h2>
-              <p style="margin: 15px 0 0 0; color: #666666; font-size: 14px; text-align: center;">Returnable Packaging Analysis</p>
+              <p style="margin: 15px 0 0 0; color: #666666; font-size: 14px; text-align: center;">Returnable Asset Visibility Analysis</p>
             </td>
           </tr>
           
@@ -159,26 +237,63 @@ async function sendReportEmail(
               <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                 <tr>
                   <td style="padding: 12px 0; border-bottom: 1px solid #e5e5e5;">
+                    <strong style="color: #333333; font-size: 14px;">Baseline Annual Loss:</strong>
+                    <span style="color: #ef4444; font-size: 14px; font-weight: 600; float: right;">$${results.baselineTotalLoss.toLocaleString()}</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 12px 0; border-bottom: 1px solid #e5e5e5;">
+                    <strong style="color: #333333; font-size: 14px;">With Visibility Annual Loss:</strong>
+                    <span style="color: #666666; font-size: 14px; font-weight: 600; float: right;">$${results.futureTotalLoss.toLocaleString()}</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 12px 0; border-bottom: 1px solid #e5e5e5;">
+                    <strong style="color: #333333; font-size: 14px;">Annual Savings:</strong>
+                    <span style="color: #22c55e; font-size: 14px; font-weight: 600; float: right;">$${results.annualSavings.toLocaleString()}</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 12px 0; border-bottom: 1px solid #e5e5e5;">
+                    <strong style="color: #333333; font-size: 14px;">Net Annual Savings:</strong>
+                    <span style="color: #22c55e; font-size: 14px; font-weight: 600; float: right;">$${results.netAnnualSavings.toLocaleString()}</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 12px 0; border-bottom: 1px solid #e5e5e5;">
                     <strong style="color: #333333; font-size: 14px;">Payback Period:</strong>
                     <span style="color: #666666; font-size: 14px; float: right;">${results.paybackPeriodYears === Infinity ? 'No payback (investment never recovers)' : `${results.paybackPeriodYears.toFixed(1)} years`}</span>
                   </td>
                 </tr>
                 <tr>
                   <td style="padding: 12px 0; border-bottom: 1px solid #e5e5e5;">
-                    <strong style="color: #333333; font-size: 14px;">Annual Savings:</strong>
-                    <span style="color: #22c55e; font-size: 14px; font-weight: 600; float: right;">$${results.grossAnnualSavings.toLocaleString()}</span>
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding: 12px 0; border-bottom: 1px solid #e5e5e5;">
-                    <strong style="color: #333333; font-size: 14px;">Fleet Size Required:</strong>
-                    <span style="color: #666666; font-size: 14px; float: right;">${Math.ceil(results.requiredFleetSize)} units</span>
+                    <strong style="color: #333333; font-size: 14px;">3-Year ROI:</strong>
+                    <span style="color: #666666; font-size: 14px; float: right;">${results.threeYearROI.toFixed(0)}%</span>
                   </td>
                 </tr>
                 <tr>
                   <td style="padding: 12px 0;">
-                    <strong style="color: #333333; font-size: 14px;">Total Investment:</strong>
-                    <span style="color: #666666; font-size: 14px; float: right;">$${results.totalInvestment.toLocaleString()}</span>
+                    <strong style="color: #333333; font-size: 14px;">Baseline Loss Breakdown:</strong>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0 8px 20px; border-bottom: 1px solid #e5e5e5;">
+                    <span style="color: #666666; font-size: 13px;">Shrink Cost: $${results.annualShrinkCost.toLocaleString()}</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0 8px 20px; border-bottom: 1px solid #e5e5e5;">
+                    <span style="color: #666666; font-size: 13px;">Dwell Time Cost: $${results.dwellCostToday.toLocaleString()}</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0 8px 20px; border-bottom: 1px solid #e5e5e5;">
+                    <span style="color: #666666; font-size: 13px;">Excess Fleet Cost: $${results.excessInventoryCost.toLocaleString()}</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0;">
+                    <span style="color: #666666; font-size: 13px;">Manual Process Cost: $${results.annualManualProcessCost.toLocaleString()}</span>
                   </td>
                 </tr>
               </table>
@@ -226,6 +341,141 @@ async function sendReportEmail(
     to: email,
     from: fromEmail,
     subject: `ACSIS ROI Report - ${company}`,
+    html: htmlContent,
+  }
+
+  await sgMail.send(msg)
+}
+
+async function sendReportEmailSimple(
+  email: string,
+  company: string,
+  results: any,
+  businessCase: string
+) {
+  const fromEmail = process.env.FROM_EMAIL || 'reports@acsis.com'
+  
+  if (!process.env.SENDGRID_API_KEY) {
+    throw new Error('SENDGRID_API_KEY is not configured')
+  }
+
+  // Format business case with proper line breaks
+  const formattedBusinessCase = businessCase
+    .split('\n')
+    .filter(line => line.trim().length > 0)
+    .map(line => line.trim())
+    .join('<br><br>')
+
+  const htmlContent = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Antares ROI Calculator Report</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5; line-height: 1.6;">
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f5f5f5;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="max-width: 600px; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+          <!-- Header -->
+          <tr>
+            <td style="padding: 40px 40px 30px 40px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px 8px 0 0;">
+              <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; text-align: center;">Antares ROI Calculator Report</h1>
+            </td>
+          </tr>
+          
+          <!-- Company Header -->
+          <tr>
+            <td style="padding: 30px 40px 20px 40px; background-color: #ffffff;">
+              <h2 style="margin: 0; color: #333333; font-size: 22px; font-weight: 600; text-align: center; border-bottom: 2px solid #667eea; padding-bottom: 15px;">
+                ${company}
+              </h2>
+              <p style="margin: 15px 0 0 0; color: #666666; font-size: 14px; text-align: center;">Returnable Asset Visibility Analysis</p>
+            </td>
+          </tr>
+          
+          <!-- Key Metrics Section -->
+          <tr>
+            <td style="padding: 30px 40px;">
+              <h3 style="margin: 0 0 20px 0; color: #333333; font-size: 18px; font-weight: 600; border-left: 4px solid #667eea; padding-left: 15px;">Your Potential Savings</h3>
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                <tr>
+                  <td style="padding: 12px 0; border-bottom: 1px solid #e5e5e5;">
+                    <strong style="color: #333333; font-size: 14px;">Lost Container Savings:</strong>
+                    <span style="color: #22c55e; font-size: 14px; font-weight: 600; float: right;">${formatMoney(results.lostContainerSavingsYearly)} / year</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 12px 0; border-bottom: 1px solid #e5e5e5;">
+                    <strong style="color: #333333; font-size: 14px;">Time Savings Value:</strong>
+                    <span style="color: #22c55e; font-size: 14px; font-weight: 600; float: right;">${formatMoney(results.timeSavingsYearly)} / year</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 12px 0; border-bottom: 1px solid #e5e5e5;">
+                    <strong style="color: #333333; font-size: 14px;">Non-Moving Container Cost:</strong>
+                    <span style="color: #22c55e; font-size: 14px; font-weight: 600; float: right;">${formatMoney(results.nonMovingCostYearly)} / year</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 12px 0; border-bottom: 1px solid #e5e5e5;">
+                    <strong style="color: #333333; font-size: 14px;">Manpower Efficiency Gains:</strong>
+                    <span style="color: #22c55e; font-size: 14px; font-weight: 600; float: right;">${formatMoney(results.manpowerEfficiencyYearly)} / year</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 12px 0;">
+                    <strong style="color: #333333; font-size: 16px;">Overall Savings:</strong>
+                    <span style="color: #22c55e; font-size: 18px; font-weight: 700; float: right;">${formatMoney(results.overallYearlySavings)} / year</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          
+          <!-- Business Case Section -->
+          <tr>
+            <td style="padding: 30px 40px; background-color: #f9fafb;">
+              <h3 style="margin: 0 0 20px 0; color: #333333; font-size: 18px; font-weight: 600; border-left: 4px solid #667eea; padding-left: 15px;">Business Case</h3>
+              <div style="color: #444444; font-size: 15px; line-height: 1.8; text-align: justify;">
+                ${formattedBusinessCase}
+              </div>
+            </td>
+          </tr>
+          
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 30px 40px; background-color: #ffffff; border-top: 1px solid #e5e5e5; border-radius: 0 0 8px 8px;">
+              <p style="margin: 0; color: #666666; font-size: 14px; text-align: center;">
+                Thank you for using the <strong style="color: #667eea;">Antares ROI Calculator</strong>!
+              </p>
+            </td>
+          </tr>
+        </table>
+        
+        <!-- Footer Note -->
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="max-width: 600px; margin-top: 20px;">
+          <tr>
+            <td style="padding: 20px; text-align: center;">
+              <p style="margin: 0; color: #999999; font-size: 12px;">
+                This report was generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `
+
+  const msg = {
+    to: email,
+    from: fromEmail,
+    subject: `Antares ROI Report - ${company}`,
     html: htmlContent,
   }
 
@@ -441,25 +691,52 @@ async function saveToHubSpot(
     }
 
     // Format note content
-    const noteContent = `Antares ROI
+    const noteContent = `Antares ROI Calculator - Visibility Analysis
 
 Company: ${company}
 Email: ${email}
 Date: ${new Date().toLocaleString()}
 
-Input Parameters:
+Fleet and Flow:
 - Monthly Volume: ${inputs.monthlyVolume}
-- Disposable Unit Cost: $${inputs.disposableUnitCost}
-- Returnable Unit Cost: $${inputs.returnableUnitCost}
-- Annual Maintenance/Cleaning: $${inputs.annualMaintCleaningBudget}
-- Cycle Time (Days): ${inputs.warehouse + inputs.transit + inputs.customer + inputs.return + inputs.cleaning + inputs.buffer}
-- Fleet Size: ${inputs.useTheoreticalFleet ? 'Calculated' : 'Manual'} (${results.requiredFleetSize})
+- Returnable Unit Cost: $${inputs.returnableUnitCost.toLocaleString()}
+- Current Fleet Size: ${inputs.currentFleetSize}
+
+Baseline (Today) Loss Parameters:
+- Shrink Rate: ${inputs.shrinkRate}%
+- Cycle Time: ${inputs.averageCycleTime} days
+- Excess Inventory: ${inputs.excessInventoryPercent}%
+- Manual Process Cost: $${inputs.annualManualProcessCost.toLocaleString()}
+
+With Visibility (Future) Parameters:
+- Shrink Rate After: ${inputs.shrinkRateAfter}%
+- Cycle Time After: ${inputs.cycleTimeAfter} days
+- Manual Process Cost After: $${inputs.annualManualProcessCostAfter.toLocaleString()}
+
+Program Costs:
+- Implementation Cost: $${inputs.implementationCost.toLocaleString()}
+- Annual Program Cost: $${inputs.annualProgramCost.toLocaleString()}
+- Cost of Capital: ${(inputs.capitalCostRate * 100).toFixed(1)}%
 
 Results:
+- Baseline Annual Loss: $${results.baselineTotalLoss.toLocaleString()}
+- Future Annual Loss: $${results.futureTotalLoss.toLocaleString()}
+- Annual Savings: $${results.annualSavings.toLocaleString()}
+- Net Annual Savings: $${results.netAnnualSavings.toLocaleString()}
 - Payback Period: ${results.paybackPeriodYears === Infinity ? 'No payback' : `${results.paybackPeriodYears.toFixed(1)} years`}
-- Annual Savings: $${results.grossAnnualSavings.toLocaleString()}
-- Total Investment: $${results.totalInvestment.toLocaleString()}
-- Break-Even Year: ${results.breakEvenYear === null ? 'Beyond 10 years' : `Year ${results.breakEvenYear}`}`
+- 3-Year ROI: ${results.threeYearROI.toFixed(0)}%
+
+Loss Breakdown (Baseline):
+- Shrink Cost: $${results.annualShrinkCost.toLocaleString()}
+- Dwell Time Cost: $${results.dwellCostToday.toLocaleString()}
+- Excess Fleet Cost: $${results.excessInventoryCost.toLocaleString()}
+- Manual Process Cost: $${results.annualManualProcessCost.toLocaleString()}
+
+Loss Breakdown (With Visibility):
+- Shrink Cost: $${results.annualShrinkCostAfter.toLocaleString()}
+- Dwell Time Cost: $${results.dwellCostAfter.toLocaleString()}
+- Excess Fleet Cost: $${results.excessInventoryCostAfter.toLocaleString()}
+- Manual Process Cost: $${results.annualManualProcessCostAfter.toLocaleString()}`
 
     // Create note and associate with contact
     const noteCreated = await createNoteForContact(apiKey, contactId, noteContent)
@@ -471,6 +748,59 @@ Results:
   } catch (error: any) {
     safeLogError('saveToHubSpot', error)
     // Re-throw to allow caller to handle, but don't block email sending
+    throw error
+  }
+}
+
+async function saveToHubSpotSimple(
+  email: string,
+  company: string,
+  inputs: VisibilitySimpleInputs,
+  results: any
+) {
+  const apiKey = process.env.HUBSPOT_ACCESS_TOKEN
+
+  if (!apiKey) {
+    return
+  }
+
+  try {
+    const contactId = await getOrCreateContact(apiKey, email, company)
+    if (!contactId) {
+      throw new Error('Failed to create or find contact in HubSpot')
+    }
+
+    const noteContent = `Antares ROI Calculator - Simple Visibility Analysis
+
+Company: ${company}
+Email: ${email}
+Date: ${new Date().toLocaleString()}
+
+Input Parameters:
+- Containers lost per month: ${inputs.lostContainersPerMonth}
+- Replacement cost: $${inputs.replacementCost}
+- Cycle counts per month: ${inputs.cycleCountsPerMonth}
+- Hours per cycle count: ${inputs.hoursPerCycleCount}
+- Cycle count associates: ${inputs.cycleCountAssociates}
+- Assets not moving 10+ days: ${inputs.nonMovingAssets10Plus}
+- Hours searching per month: ${inputs.hoursSearchingPerMonth}
+- Material handling associates: ${inputs.materialHandlingAssociates}
+- Hourly rate: $${inputs.hourlyRate}
+- Capture rate: ${inputs.captureRatePercent ?? 100}%
+
+Results:
+- Lost container savings: ${formatMoney(results.lostContainerSavingsYearly)} / year
+- Time savings value: ${formatMoney(results.timeSavingsYearly)} / year
+- Non-moving container cost: ${formatMoney(results.nonMovingCostYearly)} / year
+- Manpower efficiency gains: ${formatMoney(results.manpowerEfficiencyYearly)} / year
+- Overall savings: ${formatMoney(results.overallYearlySavings)} / year`
+
+    const noteCreated = await createNoteForContact(apiKey, contactId, noteContent)
+    if (!noteCreated) {
+      throw new Error('Failed to create note in HubSpot')
+    }
+  } catch (error: any) {
+    safeLogError('saveToHubSpotSimple', error)
     throw error
   }
 }

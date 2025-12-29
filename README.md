@@ -1,12 +1,34 @@
-# ACSIS ROI Calculator
+# Antares ROI Calculator
 
-A B2B ROI calculator comparing disposable vs. returnable packaging assets.
+A B2B ROI calculator for returnable asset visibility, comparing baseline (today) vs. with visibility (future state) to quantify the financial impact of improved tracking and management.
 
 ## Tech Stack
 
 - **Frontend:** Next.js 14 (App Router), TypeScript, Tailwind CSS, Shadcn UI, Recharts
 - **Backend:** HubSpot (CRM), SendGrid (Email), OpenAI (Analysis)
 - **Deployment:** Render
+
+## Overview
+
+The Antares ROI Calculator helps businesses quantify the financial impact of implementing returnable asset visibility solutions. It models:
+
+- **Baseline (Today) Losses:**
+  - Shrink cost (containers lost annually)
+  - Dwell time cost (working capital tied up due to cycle time)
+  - Excess fleet cost (working capital in unused containers)
+  - Manual process cost (labor for tracking and management)
+
+- **With Visibility (Future) Losses:**
+  - Reduced shrink cost
+  - Reduced dwell time cost (improved cycle time)
+  - Reduced excess fleet cost
+  - Reduced manual process cost
+
+- **ROI Metrics:**
+  - Annual savings (baseline loss - future loss)
+  - Net annual savings (annual savings - program costs)
+  - Payback period
+  - 3-year ROI
 
 ## Setup
 
@@ -33,13 +55,39 @@ A B2B ROI calculator comparing disposable vs. returnable packaging assets.
    npm run dev
    ```
 
+4. **Run tests:**
+   ```bash
+   npx tsx src/lib/calculations.test.ts
+   ```
+
 ## Features
 
 - Interactive ROI calculator with real-time calculations
-- Cycle time component sliders for detailed fleet sizing
-- 3-year cost comparison visualization
+- Baseline vs. future state comparison
+- Dwell time modeling (working capital impact of cycle time)
+- 3-year cumulative cost visualization
 - Email report generation with AI-powered business case
 - HubSpot integration for storing all calculations as notes on contacts
+
+## Model Assumptions
+
+The calculator uses the following model:
+
+1. **Dwell Time Calculation:**
+   - Fleet needed = Daily demand × Cycle time
+   - Dwell cost = Fleet needed × Unit cost × Cost of capital
+
+2. **Excess Fleet Calculation:**
+   - Excess fleet = Max(0, Current fleet - Fleet needed)
+   - Excess cost = Excess fleet × Unit cost × Cost of capital
+
+3. **Savings Calculation:**
+   - Annual savings = Baseline total loss - Future total loss
+   - Net annual savings = Annual savings - Annual program cost
+
+4. **ROI Calculation:**
+   - Payback period = Implementation cost / Net annual savings
+   - 3-year ROI = ((3-year savings - 3-year costs) / 3-year costs) × 100
 
 ## Deployment
 
@@ -77,7 +125,7 @@ This application is configured for deployment on Render with:
      - **Name:** `antares` (or your preferred name)
      - **Environment:** `Node`
      - **Region:** Choose closest to your users
-     - **Branch:** `master` (or your default branch)
+     - **Branch:** `main` (or your default branch)
      - **Root Directory:** (leave empty, or `./` if needed)
      - **Build Command:** `npm install && npm run build`
      - **Start Command:** `npm start`
@@ -106,4 +154,3 @@ This application is configured for deployment on Render with:
 - All calculation data is stored in HubSpot as notes on contacts (no database required)
 - If `HUBSPOT_ACCESS_TOKEN` is not provided, the app will still work but won't save calculations to HubSpot
 - Make sure your SendGrid sender is verified before sending emails
-
