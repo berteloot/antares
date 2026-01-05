@@ -85,6 +85,7 @@ export default function Home() {
   const [email, setEmail] = useState("")
   const [company, setCompany] = useState("")
   const [sending, setSending] = useState(false)
+  const [reportSent, setReportSent] = useState(false)
 
   const results = useMemo(() => calculateVisibilitySavingsSimple(simple), [simple])
 
@@ -104,14 +105,20 @@ export default function Home() {
 
   const onSendReport = async () => {
     setSending(true)
+    setReportSent(false)
     try {
-      await saveCalculation({
+      const result = await saveCalculation({
         email,
         company,
         simpleInputs: simple,
       } as any)
-      setEmail("")
-      setCompany("")
+      if (result?.success) {
+        setReportSent(true)
+        setEmail("")
+        setCompany("")
+        // Reset success message after 5 seconds
+        setTimeout(() => setReportSent(false), 5000)
+      }
     } catch (error) {
       console.error("Failed to send report:", error)
     } finally {
@@ -355,17 +362,26 @@ export default function Home() {
                       <DialogTitle>Send results</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-3">
-                      <div className="space-y-1">
-                        <div className="text-xs font-semibold">Company</div>
-                        <Input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Company name" />
-                      </div>
-                      <div className="space-y-1">
-                        <div className="text-xs font-semibold">Email</div>
-                        <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" />
-                      </div>
-                      <Button onClick={onSendReport} disabled={sending || !email.includes("@") || company.length < 2}>
-                        {sending ? "Sending..." : "Send report"}
-                      </Button>
+                      {reportSent ? (
+                        <div className="py-4 text-center">
+                          <div className="text-green-600 font-semibold mb-2">✓ Report sent successfully!</div>
+                          <div className="text-sm text-muted-foreground">The report has been sent to your email address.</div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="space-y-1">
+                            <div className="text-xs font-semibold">Company</div>
+                            <Input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Company name" />
+                          </div>
+                          <div className="space-y-1">
+                            <div className="text-xs font-semibold">Email</div>
+                            <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" />
+                          </div>
+                          <Button onClick={onSendReport} disabled={sending || !email.includes("@") || company.length < 2}>
+                            {sending ? "Sending..." : "Send report"}
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </DialogContent>
                 </Dialog>

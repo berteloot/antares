@@ -118,7 +118,7 @@ Computed savings:
 - Manpower efficiency gains: ${formatMoney(results.manpowerEfficiencyYearly)} per year
 - Overall savings: ${formatMoney(results.overallYearlySavings)} per year
 
-Explain what these represent and why improved visibility reduces loss, idle assets, and manual work. Keep it under 250 words.`
+Explain what these represent and why improved visibility reduces loss, idle assets, and manual work. Keep it under 250 words. When referring to the company providing this analysis, use "Antares Vision Group" (not "Nytro Marketing" or any other company name).`
 
   try {
     const completion = await openai.chat.completions.create({
@@ -166,7 +166,7 @@ Savings:
 - Payback Period: ${paybackText}
 - 3-Year ROI: ${results.threeYearROI.toFixed(0)}%
 
-Focus on the financial impact of improved visibility and tracking, emphasizing how visibility reduces shrink, improves cycle time (reducing dwell time working capital), optimizes fleet size, and automates manual processes. Make it persuasive and highlight the business benefits. Keep it under 300 words.`
+Focus on the financial impact of improved visibility and tracking, emphasizing how visibility reduces shrink, improves cycle time (reducing dwell time working capital), optimizes fleet size, and automates manual processes. Make it persuasive and highlight the business benefits. Keep it under 300 words. When referring to the company providing this analysis, use "Antares Vision Group" (not "Nytro Marketing" or any other company name).`
 
     const completion = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",

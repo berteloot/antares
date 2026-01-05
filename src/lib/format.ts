@@ -18,3 +18,4 @@ export function formatPercent(n: number, decimals: number = 1): string {
   return `${n.toFixed(decimals)}%`
 }
 
+
