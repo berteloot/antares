@@ -87,6 +87,13 @@ export default function Home() {
   const [sending, setSending] = useState(false)
   const [reportSent, setReportSent] = useState(false)
 
+  // Display dialog state
+  const [displayDialogOpen, setDisplayDialogOpen] = useState(false)
+  const [displayEmail, setDisplayEmail] = useState("")
+  const [displayCompany, setDisplayCompany] = useState("")
+  const [displaySubmitting, setDisplaySubmitting] = useState(false)
+  const [emailSubmittedForDisplay, setEmailSubmittedForDisplay] = useState(false)
+
   const results = useMemo(() => calculateVisibilitySavingsSimple(simple), [simple])
 
   const advancedResults = useMemo(() => {
@@ -101,6 +108,7 @@ export default function Home() {
   const applyPreset = (preset: keyof typeof presets) => {
     setSimple(presets[preset])
     setShowOverallSavings(false) // Reset when changing presets
+    setEmailSubmittedForDisplay(false) // Reset email submission status
   }
 
   const onSendReport = async () => {
@@ -123,6 +131,26 @@ export default function Home() {
       console.error("Failed to send report:", error)
     } finally {
       setSending(false)
+    }
+  }
+
+  const onDisplaySavings = async () => {
+    setDisplaySubmitting(true)
+    try {
+      const result = await saveCalculation({
+        email: displayEmail,
+        company: displayCompany,
+        simpleInputs: simple,
+      } as any)
+      if (result?.success) {
+        setEmailSubmittedForDisplay(true)
+        setShowOverallSavings(true)
+        // Keep dialog open to show savings
+      }
+    } catch (error) {
+      console.error("Failed to submit email:", error)
+    } finally {
+      setDisplaySubmitting(false)
     }
   }
 
@@ -333,25 +361,76 @@ export default function Home() {
                 <SavingsRow label="Current cost of non-moving containers" monthly={results.nonMovingCostMonthly} yearly={results.nonMovingCostYearly} />
                 <SavingsRow label="Potential manpower efficiency gains" monthly={results.manpowerEfficiencyMonthly} yearly={results.manpowerEfficiencyYearly} />
 
-                {showOverallSavings ? (
-                  <div className="pt-3 border-t">
-                    <div className="text-sm font-semibold">Overall savings</div>
-                    <div className="mt-2 text-xl font-semibold">{formatMoney(results.overallMonthlySavings)} / month</div>
-                    <div className="text-sm text-muted-foreground">{formatMoney(results.overallYearlySavings)} / year</div>
-                  </div>
-                ) : (
-                  <div className="pt-3 border-t">
-                    <Button 
-                      className="w-full" 
-                      onClick={() => setShowOverallSavings(true)}
-                      style={{
-                        background: 'linear-gradient(135deg, #2D69A7 0%, #009A93 100%)'
-                      }}
-                    >
-                      See Overall Savings
-                    </Button>
-                  </div>
-                )}
+                <div className="pt-3 border-t">
+                  {showOverallSavings ? (
+                    <div>
+                      <div className="text-sm font-semibold">Overall savings</div>
+                      <div className="mt-2 text-xl font-semibold">{formatMoney(results.overallMonthlySavings)} / month</div>
+                      <div className="text-sm text-muted-foreground">{formatMoney(results.overallYearlySavings)} / year</div>
+                    </div>
+                  ) : (
+                    <Dialog open={displayDialogOpen} onOpenChange={setDisplayDialogOpen}>
+                      <DialogTrigger asChild>
+                        <Button 
+                          className="w-full" 
+                          style={{
+                            background: 'linear-gradient(135deg, #2D69A7 0%, #009A93 100%)'
+                          }}
+                        >
+                          Display
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>View Overall Savings</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-3">
+                          {emailSubmittedForDisplay ? (
+                            <div className="space-y-4">
+                              <div className="py-2">
+                                <div className="text-sm font-semibold mb-2">Overall savings</div>
+                                <div className="text-2xl font-semibold">{formatMoney(results.overallMonthlySavings)} / month</div>
+                                <div className="text-sm text-muted-foreground mt-1">{formatMoney(results.overallYearlySavings)} / year</div>
+                              </div>
+                              <div className="text-xs text-muted-foreground text-center pt-2 border-t">
+                                Thank you! Your savings calculation is ready.
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="text-sm text-muted-foreground mb-3">
+                                Please provide your email to view the overall savings calculation.
+                              </div>
+                              <div className="space-y-1">
+                                <div className="text-xs font-semibold">Company</div>
+                                <Input 
+                                  value={displayCompany} 
+                                  onChange={(e) => setDisplayCompany(e.target.value)} 
+                                  placeholder="Company name" 
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <div className="text-xs font-semibold">Email</div>
+                                <Input 
+                                  value={displayEmail} 
+                                  onChange={(e) => setDisplayEmail(e.target.value)} 
+                                  placeholder="you@company.com" 
+                                />
+                              </div>
+                              <Button 
+                                onClick={onDisplaySavings} 
+                                disabled={displaySubmitting || !displayEmail.includes("@") || displayCompany.length < 2}
+                                className="w-full"
+                              >
+                                {displaySubmitting ? "Submitting..." : "View Savings"}
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  )}
+                </div>
 
                 <Dialog>
                   <DialogTrigger asChild>
