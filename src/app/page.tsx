@@ -377,7 +377,7 @@ export default function Home() {
                             background: 'linear-gradient(135deg, #2D69A7 0%, #009A93 100%)'
                           }}
                         >
-                          Display
+                          Display Your ROI
                         </Button>
                       </DialogTrigger>
                       <DialogContent>
