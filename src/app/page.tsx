@@ -81,18 +81,12 @@ export default function Home() {
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [showOverallSavings, setShowOverallSavings] = useState(false)
 
-  // Advanced report dialog inputs
+  // Report dialog inputs
   const [email, setEmail] = useState("")
   const [company, setCompany] = useState("")
   const [sending, setSending] = useState(false)
   const [reportSent, setReportSent] = useState(false)
-
-  // Display dialog state
-  const [displayDialogOpen, setDisplayDialogOpen] = useState(false)
-  const [displayEmail, setDisplayEmail] = useState("")
-  const [displayCompany, setDisplayCompany] = useState("")
-  const [displaySubmitting, setDisplaySubmitting] = useState(false)
-  const [emailSubmittedForDisplay, setEmailSubmittedForDisplay] = useState(false)
+  const [reportDialogOpen, setReportDialogOpen] = useState(false)
 
   const results = useMemo(() => calculateVisibilitySavingsSimple(simple), [simple])
 
@@ -108,7 +102,6 @@ export default function Home() {
   const applyPreset = (preset: keyof typeof presets) => {
     setSimple(presets[preset])
     setShowOverallSavings(false) // Reset when changing presets
-    setEmailSubmittedForDisplay(false) // Reset email submission status
   }
 
   const onSendReport = async () => {
@@ -122,6 +115,7 @@ export default function Home() {
       } as any)
       if (result?.success) {
         setReportSent(true)
+        setShowOverallSavings(true)
         setEmail("")
         setCompany("")
         // Reset success message after 5 seconds
@@ -131,26 +125,6 @@ export default function Home() {
       console.error("Failed to send report:", error)
     } finally {
       setSending(false)
-    }
-  }
-
-  const onDisplaySavings = async () => {
-    setDisplaySubmitting(true)
-    try {
-      const result = await saveCalculation({
-        email: displayEmail,
-        company: displayCompany,
-        simpleInputs: simple,
-      } as any)
-      if (result?.success) {
-        setEmailSubmittedForDisplay(true)
-        setShowOverallSavings(true)
-        // Keep dialog open to show savings
-      }
-    } catch (error) {
-      console.error("Failed to submit email:", error)
-    } finally {
-      setDisplaySubmitting(false)
     }
   }
 
@@ -369,7 +343,7 @@ export default function Home() {
                       <div className="text-sm text-muted-foreground">{formatMoney(results.overallYearlySavings)} / year</div>
                     </div>
                   ) : (
-                    <Dialog open={displayDialogOpen} onOpenChange={setDisplayDialogOpen}>
+                    <Dialog open={reportDialogOpen} onOpenChange={setReportDialogOpen}>
                       <DialogTrigger asChild>
                         <Button 
                           className="w-full" 
@@ -382,47 +356,33 @@ export default function Home() {
                       </DialogTrigger>
                       <DialogContent>
                         <DialogHeader>
-                          <DialogTitle>View Overall Savings</DialogTitle>
+                          <DialogTitle>Send results</DialogTitle>
                         </DialogHeader>
                         <div className="space-y-3">
-                          {emailSubmittedForDisplay ? (
+                          {reportSent ? (
                             <div className="space-y-4">
                               <div className="py-2">
                                 <div className="text-sm font-semibold mb-2">Overall savings</div>
                                 <div className="text-2xl font-semibold">{formatMoney(results.overallMonthlySavings)} / month</div>
                                 <div className="text-sm text-muted-foreground mt-1">{formatMoney(results.overallYearlySavings)} / year</div>
                               </div>
-                              <div className="text-xs text-muted-foreground text-center pt-2 border-t">
-                                Thank you! Your savings calculation is ready.
+                              <div className="py-2 text-center border-t">
+                                <div className="text-green-600 font-semibold mb-2">✓ Report sent successfully!</div>
+                                <div className="text-sm text-muted-foreground">The report has been sent to your email address.</div>
                               </div>
                             </div>
                           ) : (
                             <>
-                              <div className="text-sm text-muted-foreground mb-3">
-                                Please provide your email to view the overall savings calculation.
-                              </div>
                               <div className="space-y-1">
                                 <div className="text-xs font-semibold">Company</div>
-                                <Input 
-                                  value={displayCompany} 
-                                  onChange={(e) => setDisplayCompany(e.target.value)} 
-                                  placeholder="Company name" 
-                                />
+                                <Input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Company name" />
                               </div>
                               <div className="space-y-1">
                                 <div className="text-xs font-semibold">Email</div>
-                                <Input 
-                                  value={displayEmail} 
-                                  onChange={(e) => setDisplayEmail(e.target.value)} 
-                                  placeholder="you@company.com" 
-                                />
+                                <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" />
                               </div>
-                              <Button 
-                                onClick={onDisplaySavings} 
-                                disabled={displaySubmitting || !displayEmail.includes("@") || displayCompany.length < 2}
-                                className="w-full"
-                              >
-                                {displaySubmitting ? "Submitting..." : "View Savings"}
+                              <Button onClick={onSendReport} disabled={sending || !email.includes("@") || company.length < 2} className="w-full">
+                                {sending ? "Submitting..." : "Display your ROI"}
                               </Button>
                             </>
                           )}
@@ -431,39 +391,6 @@ export default function Home() {
                     </Dialog>
                   )}
                 </div>
-
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button className="w-full">Get the report</Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Send results</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-3">
-                      {reportSent ? (
-                        <div className="py-4 text-center">
-                          <div className="text-green-600 font-semibold mb-2">✓ Report sent successfully!</div>
-                          <div className="text-sm text-muted-foreground">The report has been sent to your email address.</div>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="space-y-1">
-                            <div className="text-xs font-semibold">Company</div>
-                            <Input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Company name" />
-                          </div>
-                          <div className="space-y-1">
-                            <div className="text-xs font-semibold">Email</div>
-                            <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" />
-                          </div>
-                          <Button onClick={onSendReport} disabled={sending || !email.includes("@") || company.length < 2}>
-                            {sending ? "Sending..." : "Send report"}
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </DialogContent>
-                </Dialog>
               </CardContent>
             </Card>
 
